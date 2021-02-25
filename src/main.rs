@@ -3,6 +3,7 @@ extern crate rand;
 extern crate time;
 
 use htm::{SpatialPooler, UniversalNext, UniversalRng};
+use std::convert::TryFrom;
 use time::PreciseTime;
 
 use std::sync::mpsc;
@@ -16,12 +17,26 @@ const CMD_OFFSET: usize = 4;
 const KEY_OFFSET: usize = 6;
 const PAYLOAD_OFFSET: usize = 8;
 
-fn atoi(s: &str) -> i64 {
-    s.parse().unwrap()
+pub fn utf8_to_string(bytes: &[u8]) -> String {
+    let vector: Vec<u8> = Vec::from(bytes);
+    String::from_utf8(vector).unwrap()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_to_string() {
+        let bytes: [u8; 7] = [0x55, 0x54, 0x46, 0x38, 0, 0, 0];
+        let len: usize = 4;
+        let actual = utf8_to_string(&bytes[0..len]);
+        assert_eq!("UTF8", actual);
+    }
 }
 
 fn main() {
-    println!("Initializing message broker");
+    println!("Initializing Message Broker");
     let (tx, rx) = mpsc::channel();
 
     let context = zmq::Context::new();
@@ -39,11 +54,10 @@ fn main() {
         subscriber.set_subscribe(b"").expect("Failed to subscribe");
 
         loop {
-            let string = subscriber.recv_string(0).unwrap().unwrap();
-            //let s = subscriber.recv_bytes(0).unwrap();
-            //println!("{:?}", s);
-            println!("{}", string);
-            tx.send(string).unwrap();
+            // let string = subscriber.recv_string(0).unwrap().unwrap();
+            let s = subscriber.recv_bytes(0).unwrap();
+            // println!("RECV ZMQ: {}", string);
+            tx.send(s).unwrap();
         }
     });
 
@@ -57,10 +71,12 @@ fn main() {
     sp.compability_mode = true;
 
     {
-        print!("Initializing Spatial Pooler ...");
-        let start = PreciseTime::now();
-        sp.init();
-        println!(": {:?}", start.to(PreciseTime::now()));
+        println!("Initializing Spatial Pooler ...");
+        println!("Skipped");
+        //let start = PreciseTime::now();
+        //sp.init();
+        //println!(": {:?}", start.to(PreciseTime::now()));
+        //println!("Done.");
     }
 
     let mut rnd = UniversalRng::from_seed([42, 0, 0, 0]);
@@ -73,60 +89,53 @@ fn main() {
 
     for received in rx {
         println!("Received new message: {:?}", received);
-        let split = received.split(",");
-        let vec = split.collect::<Vec<&str>>();
+        //let split = received.split(",");
+        //let vec = received.collect::<Vec<&str>>();
+        println!("Vector size: {:?}", received.len());
+        if received.len() > 1 {
+            msg_id = u16::from_be_bytes([received[ID_OFFSET], received[ID_OFFSET + 1]]);
+            msg_type = u16::from_be_bytes([received[TYPE_OFFSET], received[TYPE_OFFSET + 1]]);
+            msg_cmd = u16::from_be_bytes([received[CMD_OFFSET], received[CMD_OFFSET + 1]]);
+            msg_key = u16::from_be_bytes([received[KEY_OFFSET], received[KEY_OFFSET + 1]]);
 
-        let id_bytes: [u8; 2] = [
-            vec[ID_OFFSET].parse().unwrap(),
-            vec[ID_OFFSET + 1].parse().unwrap(),
-        ];
-        let type_bytes: [u8; 2] = [
-            vec[TYPE_OFFSET].parse().unwrap(),
-            vec[TYPE_OFFSET + 1].parse().unwrap(),
-        ];
-        let cmd_bytes: [u8; 2] = [
-            vec[CMD_OFFSET].parse().unwrap(),
-            vec[CMD_OFFSET + 1].parse().unwrap(),
-        ];
-        let key_bytes: [u8; 2] = [
-            vec[KEY_OFFSET].parse().unwrap(),
-            vec[KEY_OFFSET + 1].parse().unwrap(),
-        ];
-        msg_id = u16::from_be_bytes(id_bytes);
-        msg_type = u16::from_be_bytes(type_bytes);
-        msg_cmd = u16::from_be_bytes(cmd_bytes);
-        msg_key = u16::from_be_bytes(key_bytes);
-        println!(
-            "ID: {}, TYPE: {}, CMD: {}, KEY: {}",
-            msg_id, msg_type, msg_cmd, msg_key
-        );
+            println!(
+                "ID: {}, TYPE: {}, CMD: {}, KEY: {}",
+                msg_id, msg_type, msg_cmd, msg_key
+            );
+            // Dummy input
 
-        for (i, s) in vec.iter().enumerate() {
-            let byte: u8 = s.parse().unwrap();
-            // Bitwise operation to extract bool
-        }
+            // TODO Get from message
+            for val in &mut input {
+                *val = rnd.next_uv_int(2) == 1;
+            }
+            //let mut data: [u8; 4096 >> 3] = [0; 4096 >> 3];
+            let mut data: [u8; 32] = [0; 32];
 
-        // Dummy input
+            // Compute next acitvation
+            println!("Computing update ...");
+            //sp.compute(&input, true);
+            //println!("Done.");
+            println!("Skipped");
 
-        // TODO Get from message
-        for val in &mut input {
-            *val = rnd.next_uv_int(2) == 1;
-        }
-        let mut data: [u8; 4096 >> 3] = [0; 4096 >> 3];
+            // Bits to flip to 1:
+            let test_cols = [0, 1, 8, 9];
 
-        // Compute next acitvation
-        println!("Computing update ...");
-        sp.compute(&input, true);
-        println!("Done.");
+            for col_idx in test_cols.iter() {
+                //sp.winner_columns.iter() {
+                let byte_idx = col_idx >> 3;
+                let bit_idx = col_idx % 8;
+                data[byte_idx] = data[byte_idx] | 1 << bit_idx;
+                println!("data[{}] = {}", byte_idx, data[byte_idx]);
+            }
 
-        for col_idx in sp.winner_columns.iter() {
-            let byte_idx = col_idx >> 3;
-            let bit_idx = col_idx % 8;
-            data[byte_idx] = data[byte_idx] | 1 << bit_idx;
-        }
-        // Convert to output message format
-        // Send update (if requested)
-        let update = "";
-        publisher.send(&update, 0).unwrap();
+            // Convert to output message format
+            // Send update (if requested)
+
+            // let s = String::from_utf8(data.to_vec()).unwrap();
+            println!("SENT ZMQ: {:?}", data);
+            if msg_id == 2 {
+                publisher.send(&data.to_vec(), 0).unwrap();
+            }
+        } // End of vector size check
     }
 }
