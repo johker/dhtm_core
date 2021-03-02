@@ -10,12 +10,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-// TODO: Auto-Generate
-const ID_OFFSET: usize = 0;
-const TYPE_OFFSET: usize = 2;
-const CMD_OFFSET: usize = 4;
-const KEY_OFFSET: usize = 6;
-const PAYLOAD_OFFSET: usize = 8;
+// Include auto-generated file
+#[path = "../dhtm_msg/rs/msg.rs"]
+mod dhtm;
 
 pub fn utf8_to_string(bytes: &[u8]) -> String {
     let vector: Vec<u8> = Vec::from(bytes);
@@ -49,9 +46,12 @@ fn main() {
     thread::spawn(move || {
         let subscriber = context.socket(zmq::SUB).unwrap();
         assert!(subscriber.connect("tcp://localhost:5555").is_ok());
-        //let filter = "10001";
-        //assert!(subscriber.set_subscribe(filter.as_bytes()).is_ok());
-        subscriber.set_subscribe(b"").expect("Failed to subscribe");
+        let filter = dhtm::msg::MessageType::DATA as u8;
+        subscriber
+            .set_subscribe(&filter.to_string().as_bytes())
+            .expect("Failed to subscribe");
+        println!("Subscribed to {:?}", filter.to_string().as_bytes());
+        // subscriber.set_subscribe(b"").expect("Failed to subscribe");
 
         loop {
             // let string = subscriber.recv_string(0).unwrap().unwrap();
@@ -93,10 +93,22 @@ fn main() {
         //let vec = received.collect::<Vec<&str>>();
         println!("Vector size: {:?}", received.len());
         if received.len() > 1 {
-            msg_id = u16::from_be_bytes([received[ID_OFFSET], received[ID_OFFSET + 1]]);
-            msg_type = u16::from_be_bytes([received[TYPE_OFFSET], received[TYPE_OFFSET + 1]]);
-            msg_cmd = u16::from_be_bytes([received[CMD_OFFSET], received[CMD_OFFSET + 1]]);
-            msg_key = u16::from_be_bytes([received[KEY_OFFSET], received[KEY_OFFSET + 1]]);
+            msg_id = u16::from_be_bytes([
+                received[dhtm::msg::ID_OFFSET],
+                received[dhtm::msg::ID_OFFSET + 1],
+            ]);
+            msg_type = u16::from_be_bytes([
+                received[dhtm::msg::TYPE_OFFSET],
+                received[dhtm::msg::TYPE_OFFSET + 1],
+            ]);
+            msg_cmd = u16::from_be_bytes([
+                received[dhtm::msg::CMD_OFFSET],
+                received[dhtm::msg::CMD_OFFSET + 1],
+            ]);
+            msg_key = u16::from_be_bytes([
+                received[dhtm::msg::KEY_OFFSET],
+                received[dhtm::msg::KEY_OFFSET + 1],
+            ]);
 
             println!(
                 "ID: {}, TYPE: {}, CMD: {}, KEY: {}",
@@ -125,16 +137,16 @@ fn main() {
                 let byte_idx = col_idx >> 3;
                 let bit_idx = col_idx % 8;
                 data[byte_idx] = data[byte_idx] | 1 << bit_idx;
-                println!("data[{}] = {}", byte_idx, data[byte_idx]);
+                // println!("data[{}] = {}", byte_idx, data[byte_idx]);
             }
 
             // Convert to output message format
             // Send update (if requested)
 
             // let s = String::from_utf8(data.to_vec()).unwrap();
-            println!("SENT ZMQ: {:?}", data);
-            if msg_id == 2 {
-                publisher.send(&data.to_vec(), 0).unwrap();
+            if msg_cmd == dhtm::msg::MessageCommand::INPUT as u16 {
+                // println!("SENT ZMQ: {:?}", data);
+                // publisher.send(&data.to_vec(), 0).unwrap();
             }
         } // End of vector size check
     }

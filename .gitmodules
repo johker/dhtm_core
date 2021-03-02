@@ -1,0 +1,3 @@
+[submodule "dhtm_msg"]
+	path = dhtm_msg
+	url = https://github.com/johker/dhtm_msg.git
