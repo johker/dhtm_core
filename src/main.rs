@@ -14,6 +14,41 @@ use std::time::Duration;
 #[path = "../dhtm_msg/rs/msg.rs"]
 mod dhtm;
 
+struct Message {
+    data: Vec<u8>,
+}
+
+impl Message {
+    fn create_header(
+        &self,
+        msg_type: &dhtm::msg::MessageType,
+        msg_cmd: &dhtm::msg::MessageCommand,
+        msg_key: &dhtm::msg::MessageKey,
+    ) {
+        let mtype = (*msg_type as u16).to_be_bytes();
+        let mcmd = (*msg_type as u16).to_be_bytes();
+        let mkey = (*msg_type as u16).to_be_bytes();
+
+        self.data[dhtm::msg::TYPE_OFFSET] = mtype[mtype.len() - 2];
+        self.data[dhtm::msg::TYPE_OFFSET + 1] = mtype[mtype.len() - 1];
+        self.data[dhtm::msg::CMD_OFFSET] = mcmd[mcmd.len() - 2];
+        self.data[dhtm::msg::CMD_OFFSET + 1] = mcmd[mcmd.len() - 1];
+        self.data[dhtm::msg::KEY_OFFSET] = mkey[mkey.len() - 2];
+        self.data[dhtm::msg::KEY_OFFSET + 1] = mkey[mkey.len() - 1];
+    }
+
+    fn parse(&self, raw_data: &[u8]) {
+        self.data = raw_data.to_vec();
+    }
+
+    fn get_type(&self) -> u16 {
+        return u16::from_be_bytes([
+            self.data[dhtm::msg::ID_OFFSET],
+            self.data[dhtm::msg::ID_OFFSET + 1],
+        ]);
+    }
+}
+
 pub fn utf8_to_string(bytes: &[u8]) -> String {
     let vector: Vec<u8> = Vec::from(bytes);
     String::from_utf8(vector).unwrap()
@@ -93,10 +128,6 @@ fn main() {
         //let vec = received.collect::<Vec<&str>>();
         println!("Vector size: {:?}", received.len());
         if received.len() > 1 {
-            msg_id = u16::from_be_bytes([
-                received[dhtm::msg::ID_OFFSET],
-                received[dhtm::msg::ID_OFFSET + 1],
-            ]);
             msg_type = u16::from_be_bytes([
                 received[dhtm::msg::TYPE_OFFSET],
                 received[dhtm::msg::TYPE_OFFSET + 1],
@@ -121,7 +152,7 @@ fn main() {
                 *val = rnd.next_uv_int(2) == 1;
             }
             //let mut data: [u8; 4096 >> 3] = [0; 4096 >> 3];
-            let mut data: [u8; 32] = [0; 32];
+            let mut data: [u8; 36] = [0; 36];
 
             // Compute next acitvation
             println!("Computing update ...");
@@ -129,14 +160,23 @@ fn main() {
             //println!("Done.");
             println!("Skipped");
 
+            let mut m = Message {
+                data: Vec::<u8>::new(),
+            };
+            m.create_header(
+                &dhtm::msg::MessageType::DATA,
+                &dhtm::msg::MessageCommand::PRINT,
+                &dhtm::msg::MessageKey::S_SPOOL,
+            );
+
+            // Set payload
             // Bits to flip to 1:
             let test_cols = [0, 1, 8, 9];
-
             for col_idx in test_cols.iter() {
                 //sp.winner_columns.iter() {
-                let byte_idx = col_idx >> 3;
+                let byte_idx = col_idx >> 3 + dhtm::msg::PAYLOAD_OFFSET;
                 let bit_idx = col_idx % 8;
-                data[byte_idx] = data[byte_idx] | 1 << bit_idx;
+                m.data[byte_idx] = data[byte_idx] | 1 << bit_idx;
                 // println!("data[{}] = {}", byte_idx, data[byte_idx]);
             }
 
@@ -145,8 +185,8 @@ fn main() {
 
             // let s = String::from_utf8(data.to_vec()).unwrap();
             if msg_cmd == dhtm::msg::MessageCommand::INPUT as u16 {
-                // println!("SENT ZMQ: {:?}", data);
-                // publisher.send(&data.to_vec(), 0).unwrap();
+                //println!("SENT ZMQ: {:?}", data[0..31]);
+                publisher.send(&m.data, 0).unwrap();
             }
         } // End of vector size check
     }
