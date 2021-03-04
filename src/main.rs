@@ -2,6 +2,12 @@ extern crate htm;
 extern crate rand;
 extern crate time;
 
+#[macro_use]
+extern crate enum_primitive_derive;
+extern crate num_traits;
+
+use num_traits::{FromPrimitive, ToPrimitive};
+
 use htm::{SpatialPooler, UniversalNext, UniversalRng};
 use std::convert::TryFrom;
 use time::PreciseTime;
@@ -20,32 +26,68 @@ struct Message {
 
 impl Message {
     fn create_header(
-        &self,
-        msg_type: &dhtm::msg::MessageType,
-        msg_cmd: &dhtm::msg::MessageCommand,
-        msg_key: &dhtm::msg::MessageKey,
+        &mut self,
+        msg_type: dhtm::msg::MessageType,
+        msg_cmd: dhtm::msg::MessageCommand,
+        msg_key: dhtm::msg::MessageKey,
     ) {
-        let mtype = (*msg_type as u16).to_be_bytes();
-        let mcmd = (*msg_type as u16).to_be_bytes();
-        let mkey = (*msg_type as u16).to_be_bytes();
-
-        self.data[dhtm::msg::TYPE_OFFSET] = mtype[mtype.len() - 2];
-        self.data[dhtm::msg::TYPE_OFFSET + 1] = mtype[mtype.len() - 1];
-        self.data[dhtm::msg::CMD_OFFSET] = mcmd[mcmd.len() - 2];
-        self.data[dhtm::msg::CMD_OFFSET + 1] = mcmd[mcmd.len() - 1];
-        self.data[dhtm::msg::KEY_OFFSET] = mkey[mkey.len() - 2];
-        self.data[dhtm::msg::KEY_OFFSET + 1] = mkey[mkey.len() - 1];
+        self.set_type(msg_type);
+        self.set_cmd(msg_cmd);
+        self.set_key(msg_key);
     }
 
-    fn parse(&self, raw_data: &[u8]) {
+    fn parse(&mut self, raw_data: &[u8]) {
         self.data = raw_data.to_vec();
     }
 
-    fn get_type(&self) -> u16 {
-        return u16::from_be_bytes([
-            self.data[dhtm::msg::ID_OFFSET],
-            self.data[dhtm::msg::ID_OFFSET + 1],
-        ]);
+    fn print(&self) -> std::string::String {
+        return format!(
+            ">> MSG - ID: {}, TYPE: {}, CMD: {}, KEY: {}",
+            self.get_prop(&dhtm::msg::ID_OFFSET),
+            self.get_prop(&dhtm::msg::TYPE_OFFSET),
+            self.get_prop(&dhtm::msg::CMD_OFFSET),
+            self.get_prop(&dhtm::msg::KEY_OFFSET)
+        );
+    }
+
+    fn get_prop(&self, offset: &usize) -> u16 {
+        return u16::from_be_bytes([self.data[*offset], self.data[*offset + 1]]);
+    }
+
+    fn get_type(&self) -> Option<dhtm::msg::MessageType> {
+        return dhtm::msg::MessageType::from_u16(self.get_prop(&dhtm::msg::TYPE_OFFSET));
+    }
+
+    fn get_cmd(&self) -> Option<dhtm::msg::MessageCommand> {
+        return dhtm::msg::MessageCommand::from_u16(self.get_prop(&dhtm::msg::CMD_OFFSET));
+    }
+
+    fn get_key(&self) -> Option<dhtm::msg::MessageKey> {
+        return dhtm::msg::MessageKey::from_u16(self.get_prop(&dhtm::msg::KEY_OFFSET));
+    }
+
+    fn set_prop(&mut self, offset: &usize, prop: &u16) {
+        let raw_prop = prop.to_be_bytes();
+        self.data[*offset] = raw_prop[raw_prop.len() - 2];
+        self.data[*offset + 1] = raw_prop[raw_prop.len() - 1];
+    }
+
+    fn set_type(&mut self, msg_type: dhtm::msg::MessageType) {
+        if let Some(v) = msg_type.to_u16() {
+            self.set_prop(&dhtm::msg::TYPE_OFFSET, &v)
+        }
+    }
+
+    fn set_cmd(&mut self, msg_cmd: dhtm::msg::MessageCommand) {
+        if let Some(v) = msg_cmd.to_u16() {
+            self.set_prop(&dhtm::msg::CMD_OFFSET, &v)
+        }
+    }
+
+    fn set_key(&mut self, msg_key: dhtm::msg::MessageKey) {
+        if let Some(v) = msg_key.to_u16() {
+            self.set_prop(&dhtm::msg::KEY_OFFSET, &v)
+        }
     }
 }
 
@@ -117,10 +159,9 @@ fn main() {
     let mut rnd = UniversalRng::from_seed([42, 0, 0, 0]);
     let mut input = vec![false; sp.num_inputs];
 
-    let mut msg_id: u16;
-    let mut msg_type: u16;
-    let mut msg_cmd: u16;
-    let mut msg_key: u16;
+    let mut recv_msg = Message {
+        data: Vec::<u8>::new(),
+    };
 
     for received in rx {
         println!("Received new message: {:?}", received);
@@ -128,23 +169,9 @@ fn main() {
         //let vec = received.collect::<Vec<&str>>();
         println!("Vector size: {:?}", received.len());
         if received.len() > 1 {
-            msg_type = u16::from_be_bytes([
-                received[dhtm::msg::TYPE_OFFSET],
-                received[dhtm::msg::TYPE_OFFSET + 1],
-            ]);
-            msg_cmd = u16::from_be_bytes([
-                received[dhtm::msg::CMD_OFFSET],
-                received[dhtm::msg::CMD_OFFSET + 1],
-            ]);
-            msg_key = u16::from_be_bytes([
-                received[dhtm::msg::KEY_OFFSET],
-                received[dhtm::msg::KEY_OFFSET + 1],
-            ]);
+            let m = Message { data: received };
+            println!("RECV {}", m.print());
 
-            println!(
-                "ID: {}, TYPE: {}, CMD: {}, KEY: {}",
-                msg_id, msg_type, msg_cmd, msg_key
-            );
             // Dummy input
 
             // TODO Get from message
@@ -164,9 +191,9 @@ fn main() {
                 data: Vec::<u8>::new(),
             };
             m.create_header(
-                &dhtm::msg::MessageType::DATA,
-                &dhtm::msg::MessageCommand::PRINT,
-                &dhtm::msg::MessageKey::S_SPOOL,
+                dhtm::msg::MessageType::DATA,
+                dhtm::msg::MessageCommand::PRINT,
+                dhtm::msg::MessageKey::S_SPOOL,
             );
 
             // Set payload
@@ -184,7 +211,7 @@ fn main() {
             // Send update (if requested)
 
             // let s = String::from_utf8(data.to_vec()).unwrap();
-            if msg_cmd == dhtm::msg::MessageCommand::INPUT as u16 {
+            if let Some(dhtm::msg::MessageCommand::INPUT) = m.get_cmd() {
                 //println!("SENT ZMQ: {:?}", data[0..31]);
                 publisher.send(&m.data, 0).unwrap();
             }
