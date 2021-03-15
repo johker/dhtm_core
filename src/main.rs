@@ -17,103 +17,31 @@ use std::thread;
 use std::time::Duration;
 
 // Include auto-generated file
+mod com;
 #[path = "../dhtm_msg/rs/msg.rs"]
 mod dhtm;
 
-struct Message {
-    data: Vec<u8>,
-}
-
-impl Message {
-    fn create_header(
-        &mut self,
-        msg_type: dhtm::msg::MessageType,
-        msg_cmd: dhtm::msg::MessageCommand,
-        msg_key: dhtm::msg::MessageKey,
-    ) {
-        self.set_type(msg_type);
-        self.set_cmd(msg_cmd);
-        self.set_key(msg_key);
-    }
-
-    fn parse(&mut self, raw_data: &[u8]) {
-        self.data = raw_data.to_vec();
-    }
-
-    fn print(&self) -> std::string::String {
-        return format!(
-            ">> MSG - ID: {}, TYPE: {}, CMD: {}, KEY: {}",
-            self.get_prop(&dhtm::msg::ID_OFFSET),
-            self.get_prop(&dhtm::msg::TYPE_OFFSET),
-            self.get_prop(&dhtm::msg::CMD_OFFSET),
-            self.get_prop(&dhtm::msg::KEY_OFFSET)
-        );
-    }
-
-    fn get_prop(&self, offset: &usize) -> u16 {
-        return u16::from_be_bytes([self.data[*offset], self.data[*offset + 1]]);
-    }
-
-    fn get_type(&self) -> Option<dhtm::msg::MessageType> {
-        return dhtm::msg::MessageType::from_u16(self.get_prop(&dhtm::msg::TYPE_OFFSET));
-    }
-
-    fn get_cmd(&self) -> Option<dhtm::msg::MessageCommand> {
-        return dhtm::msg::MessageCommand::from_u16(self.get_prop(&dhtm::msg::CMD_OFFSET));
-    }
-
-    fn get_key(&self) -> Option<dhtm::msg::MessageKey> {
-        return dhtm::msg::MessageKey::from_u16(self.get_prop(&dhtm::msg::KEY_OFFSET));
-    }
-
-    fn set_prop(&mut self, offset: &usize, prop: &u16) {
-        let raw_prop = prop.to_be_bytes();
-        self.data[*offset] = raw_prop[raw_prop.len() - 2];
-        self.data[*offset + 1] = raw_prop[raw_prop.len() - 1];
-    }
-
-    fn set_type(&mut self, msg_type: dhtm::msg::MessageType) {
-        if let Some(v) = msg_type.to_u16() {
-            self.set_prop(&dhtm::msg::TYPE_OFFSET, &v)
-        }
-    }
-
-    fn set_cmd(&mut self, msg_cmd: dhtm::msg::MessageCommand) {
-        if let Some(v) = msg_cmd.to_u16() {
-            self.set_prop(&dhtm::msg::CMD_OFFSET, &v)
-        }
-    }
-
-    fn set_key(&mut self, msg_key: dhtm::msg::MessageKey) {
-        if let Some(v) = msg_key.to_u16() {
-            self.set_prop(&dhtm::msg::KEY_OFFSET, &v)
-        }
-    }
-}
-
-pub fn utf8_to_string(bytes: &[u8]) -> String {
-    let vector: Vec<u8> = Vec::from(bytes);
-    String::from_utf8(vector).unwrap()
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_to_string() {
-        let bytes: [u8; 7] = [0x55, 0x54, 0x46, 0x38, 0, 0, 0];
-        let len: usize = 4;
-        let actual = utf8_to_string(&bytes[0..len]);
-        assert_eq!("UTF8", actual);
-    }
-}
+use self::com::message::Message;
+use self::dhtm::msg::{MessageCommand, MessageKey, MessageType};
+use self::dhtm::msg::{
+    CMD_OFFSET, DEF_PL_SIZE, ID_OFFSET, KEY_OFFSET, PAYLOAD_OFFSET, TYPE_OFFSET,
+};
 
 fn main() {
     println!("Initializing Message Broker");
     let (tx, rx) = mpsc::channel();
 
     let context = zmq::Context::new();
+
+    let mut m = Message {
+        data: vec![0; DEF_PL_SIZE + PAYLOAD_OFFSET],
+    };
+
+    m.create_header(
+        MessageType::DATA,
+        MessageCommand::PRINT,
+        MessageKey::S_SPOOL,
+    );
 
     // Initialize publisher
     let publisher = context.socket(zmq::PUB).unwrap();
@@ -123,7 +51,7 @@ fn main() {
     thread::spawn(move || {
         let subscriber = context.socket(zmq::SUB).unwrap();
         assert!(subscriber.connect("tcp://localhost:5555").is_ok());
-        let filter = dhtm::msg::MessageType::DATA as u8;
+        let filter = MessageType::DATA as u8;
         subscriber
             .set_subscribe(&filter.to_string().as_bytes())
             .expect("Failed to subscribe");
@@ -149,70 +77,49 @@ fn main() {
 
     {
         println!("Initializing Spatial Pooler ...");
-        println!("Skipped");
-        //let start = PreciseTime::now();
-        //sp.init();
-        //println!(": {:?}", start.to(PreciseTime::now()));
-        //println!("Done.");
+        let start = PreciseTime::now();
+        sp.init();
+        println!(": {:?}", start.to(PreciseTime::now()));
+        println!("Done.");
     }
 
-    let mut rnd = UniversalRng::from_seed([42, 0, 0, 0]);
     let mut input = vec![false; sp.num_inputs];
-
-    let mut recv_msg = Message {
-        data: Vec::<u8>::new(),
-    };
 
     for received in rx {
         println!("Received new message: {:?}", received);
-        //let split = received.split(",");
-        //let vec = received.collect::<Vec<&str>>();
         println!("Vector size: {:?}", received.len());
         if received.len() > 1 {
-            let m = Message { data: received };
+            m.data = received;
             println!("RECV {}", m.print());
+            if let Some(MessageCommand::INPUT) = m.get_cmd() {
+                println!("Input: {:?}", input);
+                m.parse_to(&mut input);
+                println!("Input: {:?}", input);
 
-            // Dummy input
+                // Compute next acitvation
+                println!("Computing update ...");
+                sp.compute(&input, true);
+                println!("Done.");
+                //println!("Skipped");
 
-            // TODO Get from message
-            for val in &mut input {
-                *val = rnd.next_uv_int(2) == 1;
-            }
-            //let mut data: [u8; 4096 >> 3] = [0; 4096 >> 3];
-            let mut data: [u8; 36] = [0; 36];
+                m.create_header(
+                    MessageType::DATA,
+                    MessageCommand::PRINT,
+                    MessageKey::S_SPOOL,
+                );
 
-            // Compute next acitvation
-            println!("Computing update ...");
-            //sp.compute(&input, true);
-            //println!("Done.");
-            println!("Skipped");
+                // Set payload
+                // Bits to flip to 1:
+                for col_idx in sp.winner_columns.iter() {
+                    let byte_idx = col_idx >> 3 + dhtm::msg::PAYLOAD_OFFSET;
+                    let bit_idx = col_idx % 8;
+                    m.data[byte_idx] = m.data[byte_idx] | 1 << bit_idx;
+                    // println!("data[{}] = {}", byte_idx, data[byte_idx]);
+                }
 
-            let mut m = Message {
-                data: Vec::<u8>::new(),
-            };
-            m.create_header(
-                dhtm::msg::MessageType::DATA,
-                dhtm::msg::MessageCommand::PRINT,
-                dhtm::msg::MessageKey::S_SPOOL,
-            );
+                // Convert to output message format
 
-            // Set payload
-            // Bits to flip to 1:
-            let test_cols = [0, 1, 8, 9];
-            for col_idx in test_cols.iter() {
-                //sp.winner_columns.iter() {
-                let byte_idx = col_idx >> 3 + dhtm::msg::PAYLOAD_OFFSET;
-                let bit_idx = col_idx % 8;
-                m.data[byte_idx] = data[byte_idx] | 1 << bit_idx;
-                // println!("data[{}] = {}", byte_idx, data[byte_idx]);
-            }
-
-            // Convert to output message format
-            // Send update (if requested)
-
-            // let s = String::from_utf8(data.to_vec()).unwrap();
-            if let Some(dhtm::msg::MessageCommand::INPUT) = m.get_cmd() {
-                //println!("SENT ZMQ: {:?}", data[0..31]);
+                // let s = String::from_utf8(data.to_vec()).unwrap();
                 publisher.send(&m.data, 0).unwrap();
             }
         } // End of vector size check
