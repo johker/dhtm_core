@@ -34,23 +34,40 @@ impl Message {
     pub fn set_payload_bit(&mut self, idx: &usize) {
         let byte = (idx >> 3) + PAYLOAD_OFFSET;
         let bit = idx % 8;
+        if byte > self.data.len() - 1 {
+            println!("Out of bounds ({})", self.data.len());
+            return;
+        }
         self.data[byte] |= 1 << bit;
     }
 
-    pub fn unset_payload_bit(&mut self, idx: &usize) {
+    pub fn clear_payload_bit(&mut self, idx: &usize) {
         let byte = (idx >> 3) + PAYLOAD_OFFSET;
         let bit = idx % 8;
+        if byte > self.data.len() - 1 {
+            return;
+        }
         self.data[byte] &= !(1 << bit);
     }
 
     pub fn print(&self) -> std::string::String {
         return format!(
-            ">> MSG - ID: {}, TYPE: {}, CMD: {}, KEY: {}",
+            ">> MSG - ID: {}, TYPE: {}, CMD: {}, KEY: {}\nPAYLOAD: {:?}",
             self.get_prop(&ID_OFFSET),
             self.get_prop(&TYPE_OFFSET),
             self.get_prop(&CMD_OFFSET),
-            self.get_prop(&KEY_OFFSET)
+            self.get_prop(&KEY_OFFSET),
+            self.data
         );
+    }
+
+    pub fn get_topic(&self) -> std::string::String {
+        let topic = format!(
+            "{:03}.{:03}",
+            self.get_prop(&TYPE_OFFSET),
+            self.get_prop(&CMD_OFFSET)
+        );
+        return topic;
     }
 
     pub fn get_prop(&self, offset: &usize) -> u16 {
