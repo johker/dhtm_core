@@ -16,7 +16,7 @@ impl Message {
         msg_key: MessageKey,
     ) {
         if self.data.len() < PAYLOAD_OFFSET {
-            self.data = vec![0; PAYLOAD_OFFSET];
+            self.data = vec![0; PAYLOAD_OFFSET + DEF_PL_SIZE];
         }
         self.set_type(msg_type);
         self.set_cmd(msg_cmd);
@@ -51,6 +51,9 @@ impl Message {
     }
 
     pub fn print(&self) -> std::string::String {
+        if self.data.len() < PAYLOAD_OFFSET + 2 {
+            return "UNDEFINED".to_string();
+        }
         return format!(
             ">> MSG - ID: {}, TYPE: {}, CMD: {}, KEY: {}\nPAYLOAD: {:?}",
             self.get_prop(&ID_OFFSET),
@@ -63,7 +66,7 @@ impl Message {
 
     pub fn get_topic(&self) -> std::string::String {
         let topic = format!(
-            "{:03}.{:03}",
+            "T{:03}.{:03}",
             self.get_prop(&TYPE_OFFSET),
             self.get_prop(&CMD_OFFSET)
         );

@@ -32,7 +32,7 @@ fn main() {
 
     m.create_header(
         MessageType::DATA,
-        MessageCommand::PRINT,
+        MessageCommand::INPUT,
         MessageKey::S_SPOOL,
     );
 
@@ -75,6 +75,11 @@ fn main() {
 
     for received in rx {
         if received.len() > 1 {
+            println!("RAW: {:?}", received);
+            if received[0] == 84 {
+                // Topic
+                continue;
+            }
             m.data = received;
             println!("RECV {}", m.print());
             if let Some(MessageCommand::INPUT) = m.get_cmd() {
