@@ -13,3 +13,6 @@ htm = { path = "../dhtm_lib" }
 time = "0.2.25"
 enum-primitive-derive = "0.2.1"
 num-traits = "0.2.14"
+syn = "1.0.69"
+quote = "1.0.9"
+
